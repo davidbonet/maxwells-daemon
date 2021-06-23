@@ -1,4 +1,5 @@
 import numpy as np
+import jax.numpy as jnp
 import matplotlib
 import matplotlib.pyplot as plt
 from collections import OrderedDict
@@ -83,11 +84,11 @@ class BatchList(list):
         self.all_idxs = slice(0, N_total)
 
 def logsumexp(X, axis):
-    max_X = np.max(X)
-    return max_X + np.log(np.sum(np.exp(X - max_X), axis=axis, keepdims=True))
+    max_X = jnp.max(X)
+    return max_X + jnp.log(jnp.sum(jnp.exp(X - max_X), axis=axis, keepdims=True))
 
-def logit(x): return 1 / (1 + np.exp(-x))
-def inv_logit(y): return -np.log( 1/y - 1)
+def logit(x): return 1 / (1 + jnp.exp(-x))
+def inv_logit(y): return -jnp.log( 1/y - 1)
 def d_logit(x): return logit(x) * (1 - logit(x))
 
 def make_nn_funs(layer_sizes):
@@ -104,11 +105,11 @@ def make_nn_funs(layer_sizes):
         for i in range(N_layers):
             cur_W = W[('weights', i)]
             cur_B = W[('biases',  i)]
-            cur_units = np.dot(cur_units, cur_W) + cur_B
+            cur_units = jnp.dot(cur_units, cur_W) + cur_B
             if i == (N_layers - 1):
                 cur_units = cur_units - logsumexp(cur_units, axis=1)
             else:
-                cur_units = np.tanh(cur_units)
+                cur_units = jnp.tanh(cur_units)
         return cur_units
 
     def loss(W_vect, X, T):

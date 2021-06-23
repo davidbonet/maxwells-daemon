@@ -6,16 +6,16 @@ import hashlib
 
 @contextmanager
 def tictoc(text=""):
-    print "--- Start clock ---"
+    print("--- Start clock ---")
     t1 = time()
     yield
     dt = time() - t1
-    print "--- Stop clock {0}: {1} seconds elapsed ---".format(text, dt)
+    print("--- Stop clock {0}: {1} seconds elapsed ---".format(text, dt))
 
 class RandomState(npr.RandomState):
     """Takes an arbitrary object as seed (uses its string representation)"""
     def __init__(self, obj):
-        hashed_int = int(hashlib.md5(str(obj)).hexdigest()[:8], base=16) # 32-bit int
+        hashed_int = int(hashlib.md5(str(obj).encode('utf-8')).hexdigest()[:8], base=16) # 32-bit int
         super(RandomState, self).__init__(hashed_int)
 
     def int32(self):

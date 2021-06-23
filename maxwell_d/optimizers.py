@@ -1,8 +1,8 @@
-import numpy as np
 import numpy.random as npr
 from numpy.linalg import norm
 
-from funkyyak import grad
+from jax import grad
+import jax.numpy as np
 
 def sgd(grad, x, v=None, callback=None, iters=200, learn_rate=0.1, decay=0.9):
     """Stochastic gradient descent with momentum."""

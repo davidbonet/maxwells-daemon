@@ -7,7 +7,7 @@ import numpy.random as npr
 import pickle
 
 def datapath(fname):
-    datadir = os.path.expanduser('~/repos/maxwells-daemon/data')
+    datadir = os.path.expanduser('data')
     return os.path.join(datadir, fname)
 
 def mnist():
@@ -34,8 +34,9 @@ def lecun_gz_to_pickle():
         pickle.dump(data, f, 1)
 
 def load_data(normalize=False):
-    with open(datapath("mnist/mnist_data.pkl")) as f:
-        train_images, train_labels, test_images, test_labels = pickle.load(f)
+    with open(datapath("mnist/mnist_data.pkl"), 'rb') as f:
+        train_images, train_labels, test_images, test_labels = pickle.load(f, encoding='latin1')
+
 
     one_hot = lambda x, K : np.array(x[:,None] == np.arange(K)[None, :], dtype=int)
     partial_flatten = lambda x : np.reshape(x, (x.shape[0], np.prod(x.shape[1:])))
@@ -86,7 +87,7 @@ def load_boston_housing(train_frac=0.5, rs=npr.RandomState(0)):
     y = y - y_mean
     y_std = np.std(y[train_ixs])
     y = y / y_std
-    print "Scaling boston housing prices by {0}".format(y_std)
+    print("Scaling boston housing prices by {0}".format(y_std))
 
     def unscale_y(y):
         return y * y_std
