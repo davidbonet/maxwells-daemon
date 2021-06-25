@@ -115,7 +115,8 @@ def entropic_descent_deterministic(grad, x_scale, callback=None, epsilon=0.1,
         raise Exception("{0} not valid".format(scale_calc_method))
 
     D = len(x_scale)
-    x = rs.randn(D) * x_scale
+    x = x_scale # Initialize parameters as desired in CNN architecutre
+    # x = rs.randn(D) * x_scale
     v = rs.randn(D)
     entropy = 0.5 * D * (1 + np.log(2*np.pi)) + np.sum(np.log(x_scale))
     prev_anneal = 0.0

@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 from jax import random
 from jax.experimental import stax
-from jax.experimental.stax import (Conv, Dense, Flatten, Relu, LogSoftmax, MaxPool)
+from jax.experimental.stax import (Conv, Dense, Flatten, Relu, LogSoftmax, Softmax, MaxPool)
 from jax.nn.initializers import he_uniform
 
 class WeightsParser(object):
@@ -40,6 +40,12 @@ class VectorParser(object):
         size = np.prod(shape)
         self.idxs_and_shapes[name] = (slice(start, start + size), shape)
         self.vect = np.concatenate((self.vect, np.zeros(size)), axis=0)
+        
+    def add_shape_and_values(self, name, array):
+        start = len(self.vect)
+        size = np.prod(array.shape)
+        self.idxs_and_shapes[name] = (slice(start, start + size), array.shape)
+        self.vect = np.concatenate((self.vect, array.reshape(size)), axis=0)
 
     def new_vect(self, vect):
         assert vect.size == self.vect.size
@@ -109,7 +115,6 @@ def make_nn_funs(layer_sizes):
         N_layers = len(layer_sizes) - 1
         for i in range(N_layers):
             cur_W = W[('weights', i)]
-            breakpoint()
             cur_B = W[('biases',  i)]
             cur_units = jnp.dot(cur_units, cur_W) + cur_B
             if i == (N_layers - 1):
@@ -213,13 +218,14 @@ def make_toy_cnn_funs(num_classes, num_channels, image_shape, batch_size, seed=0
     parser = VectorParser()
     for i, layer in enumerate(trainable_layers):
         weights, biases = params[layer]
-        parser.add_shape(('weights', i), weights.shape)
-        parser.add_shape(('biases', i), biases.shape)
-    
+        # parser.add_shape(('weights', i), weights.shape)
+        # parser.add_shape(('biases', i), biases.shape)
+        parser.add_shape_and_values(('weights', i), weights)
+        parser.add_shape_and_values(('biases', i), biases)
+
     def predictions(W_vect, images):
         """Outputs normalized log-probabilities."""
         W = parser.new_vect(W_vect)
-        cur_units = images
         cur_params = []
         it_trainable = 0
         for i in range(num_layers):
@@ -230,15 +236,13 @@ def make_toy_cnn_funs(num_classes, num_channels, image_shape, batch_size, seed=0
                 it_trainable += 1
             else:
                 cur_params.append(())
-        conv_net(cur_params, images)
-        return cur_units
+        return conv_net(cur_params, images)
     
-    def loss(W_vect, images, targets):
-        preds = predictions(W_vect, images)
-        return - np.sum(preds * targets) / images.shape[0]
-    
-    def frac_err(W_vect, images, targets):
-        preds = predictions(W_vect, images)
-        return np.mean(np.argmax(targets, axis=1) != np.argmax(preds, axis=1))
-        
+    def loss(W_vect, X, T):
+        return - np.sum(predictions(W_vect, X) * T) / X.shape[0]
+
+    def frac_err(W_vect, X, T):
+        preds = np.argmax(predictions(W_vect, X), axis=1)
+        return np.mean(np.argmax(T, axis=1) != preds)
+
     return parser, predictions, loss, frac_err

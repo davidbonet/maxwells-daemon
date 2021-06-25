@@ -10,17 +10,18 @@ from jax import grad
 
 from maxwell_d.util import RandomState
 from maxwell_d.optimizers import entropic_descent_deterministic
-from maxwell_d.nn_utils import make_nn_funs
-from maxwell_d.data import load_data_subset
+from maxwell_d.nn_utils import make_toy_cnn_funs, make_nn_funs
+from maxwell_d.data import load_mnist
 
 # ------ Problem parameters -------
 layer_sizes = [784, 300, 10]
 batch_size = 200
 N_train = 10**3
 N_tests = 10**3
+num_channels = 5
 
 # ------ Variational parameters -------
-seed = 0
+seed = 1
 init_scale = 0.1
 epsilon = 1.0 / N_train
 gamma = 0.3
@@ -39,14 +40,18 @@ def neg_log_prior(w):
 
 def run():
     (train_images, train_labels),\
-    (tests_images, tests_labels) = load_data_subset(N_train, N_tests)
-    parser, pred_fun, nllfun, frac_err = make_nn_funs(layer_sizes)
+    (tests_images, tests_labels),\
+    num_classes, IMAGE_SHAPE = load_mnist()
+    (train_images, train_labels) = (train_images[:N_train], train_labels[:N_train])
+    (tests_images, tests_labels) = (tests_images[:N_tests], tests_labels[:N_tests])
+    parser, pred_fun, nllfun, frac_err = make_toy_cnn_funs(num_classes, num_channels, IMAGE_SHAPE, batch_size, seed)
+    # parser, pred_fun, nllfun, frac_err = make_nn_funs(layer_sizes)
     N_param = len(parser.vect)
-
     print("Running experiment...")
     results = defaultdict(list)
     for i in range(N_samples):
-        x_init_scale = np.full(N_param, init_scale)
+        # x_init_scale = np.full(N_param, init_scale)
+        params = parser.vect
 
         def indexed_loss_fun(w, i_iter):
             rs = RandomState((seed, i, i_iter))
@@ -71,7 +76,7 @@ def run():
                                                   results[("tests_likelihood", i)][-1],
                                                   results[("tests_error",      i)][-1]))
         rs = RandomState((seed, i))
-        entropic_descent_deterministic(gradfun, callback=callback, x_scale=x_init_scale,
+        entropic_descent_deterministic(gradfun, callback=callback, x_scale=params,
                           epsilon=epsilon, gamma=gamma, alpha=alpha,
                           annealing_schedule=annealing_schedule, rs=rs)
     return results

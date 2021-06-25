@@ -1,16 +1,20 @@
 """First real experiment - how well do we do on MNIST?"""
-
+import jax.numpy as jnp
 import numpy as np
 from numpy.linalg import norm
 import pickle
 from collections import defaultdict
 
-from funkyyak import grad
 
-from maxwell_d.util import RandomState
-from maxwell_d.optimizers import entropic_descent_deterministic
-from maxwell_d.nn_utils import make_nn_funs
-from maxwell_d.data import load_data_subset
+
+import sys
+sys.path.insert(1, 'maxwell_d')
+from util import RandomState
+from optimizers import entropic_descent_deterministic
+from nn_utils import make_nn_funs
+from data import load_data_subset
+
+from jax import grad
 
 # ------ Problem parameters -------
 layer_sizes = [784, 300, 10]
@@ -25,16 +29,16 @@ epsilon = 1.0 / N_train
 gamma = 0.3
 N_iter = 1000
 alpha = 0.05
-annealing_schedule = np.concatenate((np.zeros(N_iter/5),
-                                     np.linspace(0, 1, 3 * N_iter/5),
-                                     np.ones(N_iter/5)))
+annealing_schedule = np.concatenate((np.zeros(int(N_iter/5)),
+                                     np.linspace(0, 1, 3 * int(N_iter/5)),
+                                     np.ones(int(N_iter/5))))
 # ------ Plot parameters -------
 N_samples = 3
 N_checkpoints = 30
 thin = np.ceil(N_iter/N_checkpoints)
 
 def neg_log_prior(w):
-    return 0.5 * np.dot(w, w) / init_scale**2
+    return 0.5 * jnp.dot(w, w) / init_scale**2
 
 def run():
     (train_images, train_labels),\
@@ -42,9 +46,9 @@ def run():
     parser, pred_fun, nllfun, frac_err = make_nn_funs(layer_sizes)
     N_param = len(parser.vect)
 
-    print "Running experiment..."
+    print("Running experiment...")
     results = defaultdict(list)
-    for i in xrange(N_samples):
+    for i in range(N_samples):
         x_init_scale = np.full(N_param, init_scale)
 
         def indexed_loss_fun(w, i_iter):
@@ -65,10 +69,10 @@ def run():
             results[("train_likelihood", i)].append(-nllfun(x, train_images, train_labels))
             results[("tests_likelihood", i)].append(-nllfun(x, tests_images, tests_labels))
             results[("tests_error", i)].append(frac_err(x, tests_images, tests_labels))
-            print "Iteration {0:5} Train likelihood {1:2.4f}  Test likelihood {2:2.4f}" \
+            print("Iteration {0:5} Train likelihood {1:2.4f}  Test likelihood {2:2.4f}" \
                   "  Test Err {3:2.4f}".format(t, results[("train_likelihood", i)][-1],
                                                   results[("tests_likelihood", i)][-1],
-                                                  results[("tests_error",      i)][-1])
+                                                  results[("tests_error",      i)][-1]))
         rs = RandomState((seed, i))
         entropic_descent_deterministic(gradfun, callback=callback, x_scale=x_init_scale,
                           epsilon=epsilon, gamma=gamma, alpha=alpha,
@@ -84,7 +88,7 @@ def plot_traces_and_mean(results, trace_type, X=None):
     ax = fig.add_subplot(211)
     if X is None:
         X = np.arange(len(results[(trace_type, 0)]))
-    for i in xrange(N_samples):
+    for i in range(N_samples):
         plt.plot(X, results[(trace_type, i)])
     ax.set_xlabel("Iteration")
     ax.set_ylabel(trace_type)
@@ -94,13 +98,13 @@ def plot_traces_and_mean(results, trace_type, X=None):
     plt.savefig(trace_type + '.png')
 
 def plot():
-    print "Plotting results..."
+    print("Plotting results...")
     with open('results.pkl') as f:
           results = pickle.load(f)
     import matplotlib.pyplot as plt
 
     iters = results[('iterations', 0)]
-    for i in xrange(N_samples):
+    for i in range(N_samples):
         results[('marginal_likelihood', i)] = estimate_marginal_likelihood(
             results[("train_likelihood", i)],
             np.array(results[("entropy", i)])[iters])
