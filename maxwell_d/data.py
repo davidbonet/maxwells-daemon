@@ -5,6 +5,7 @@ import array
 import numpy as np
 import numpy.random as npr
 import pickle
+from tensorflow import keras
 
 def datapath(fname):
     datadir = os.path.expanduser('data')
@@ -93,6 +94,49 @@ def load_boston_housing(train_frac=0.5, rs=npr.RandomState(0)):
         return y * y_std
 
     return X[train_ixs,:], y[train_ixs], X[test_ixs,:], y[test_ixs], unscale_y
+
+def load_mnist():
+    num_classes = 10
+    (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
+    x_train = x_train.reshape(60000, 28, 28, 1)
+    x_test = x_test.reshape(10000, 28, 28, 1)
+    IMAGE_SHAPE = [28, 28, 1]
+    x_train = x_train.astype('float32') / 255.0
+    x_test = x_test.astype('float32') / 255.0
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+    y_test = keras.utils.to_categorical(y_test, num_classes)
+    return (x_train, y_train), (x_test, y_test), num_classes, IMAGE_SHAPE
+
+def load_cifar10():
+    num_classes = 10
+    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar10.load_data()
+    IMAGE_SHAPE = [32, 32, 3]
+    x_train = x_train.astype('float32') / 255.0
+    x_test = x_test.astype('float32') / 255.0
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+    y_test = keras.utils.to_categorical(y_test, num_classes)
+    return (x_train, y_train), (x_test, y_test), num_classes, IMAGE_SHAPE
+
+def load_cifar10_2_classes(c1, c2):
+    class_names = ['plane', 'auto', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+    num_classes = 2
+    c1 = class_names.index(c1)
+    c2 = class_names.index(c2)
+    (x_train, y_train), (x_test, y_test) = keras.datasets.cifar10.load_data()
+    IMAGE_SHAPE = [32, 32, 3]
+    train_filter = np.where((y_train == c1 ) | (y_train == c2))[0]
+    test_filter = np.where((y_test == c1) | (y_test == c2))[0]
+    y_train = np.where(y_train == c1, 0, y_train)
+    y_test = np.where(y_test == c1, 0, y_test)
+    y_train = np.where(y_train == c2, 1, y_train)
+    y_test = np.where(y_test == c2, 1, y_test)
+    x_train, y_train = x_train[train_filter], y_train[train_filter]
+    x_test, y_test = x_test[test_filter], y_test[test_filter]
+    x_train = x_train.astype('float32') / 255.0
+    x_test = x_test.astype('float32') / 255.0
+    y_train = keras.utils.to_categorical(y_train, num_classes)
+    y_test = keras.utils.to_categorical(y_test, num_classes)
+    return (x_train, y_train), (x_test, y_test), num_classes, IMAGE_SHAPE
 
 
 if __name__=="__main__":
