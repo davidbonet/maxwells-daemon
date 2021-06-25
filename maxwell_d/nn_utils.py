@@ -4,6 +4,11 @@ import matplotlib
 import matplotlib.pyplot as plt
 from collections import OrderedDict
 
+from jax import random
+from jax.experimental import stax
+from jax.experimental.stax import (Conv, Dense, Flatten, Relu, LogSoftmax, MaxPool)
+from jax.nn.initializers import he_uniform
+
 class WeightsParser(object):
     def __init__(self):
         self.idxs_and_shapes = {}
@@ -104,6 +109,7 @@ def make_nn_funs(layer_sizes):
         N_layers = len(layer_sizes) - 1
         for i in range(N_layers):
             cur_W = W[('weights', i)]
+            breakpoint()
             cur_B = W[('biases',  i)]
             cur_units = jnp.dot(cur_units, cur_W) + cur_B
             if i == (N_layers - 1):
@@ -181,3 +187,58 @@ def plot_images(images, ax, ims_per_row=5, padding=5, digit_dimensions=(28,28),
     plt.yticks(np.array([]))
     return cax
 
+def make_toy_cnn_funs(num_classes, num_channels, image_shape, batch_size, seed=0):
+    key = random.PRNGKey(seed)
+    init_fun, conv_net = stax.serial(# Layer 0
+                                    Conv(num_channels, (5, 5), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                    Relu,
+                                    # Layer 1
+                                    Conv(num_channels, (5, 5), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                    Relu,
+                                    MaxPool((2, 2), strides=(2, 2), padding="SAME"),
+                                    # Layer 2
+                                    Conv(num_channels, (5, 5), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                    Relu,
+                                    # Layer 3
+                                    Conv(num_channels, (3, 3), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                    Relu,
+                                    MaxPool((2, 2), strides=(2, 2), padding="SAME"),
+                                    # Output
+                                    Flatten,
+                                    Dense(num_classes),
+                                    LogSoftmax)
+    _, params = init_fun(key, (batch_size, image_shape[0], image_shape[1], image_shape[2]))
+    trainable_layers = [0,2,5,7,11]
+    num_layers = 13
+    parser = VectorParser()
+    for i, layer in enumerate(trainable_layers):
+        weights, biases = params[layer]
+        parser.add_shape(('weights', i), weights.shape)
+        parser.add_shape(('biases', i), biases.shape)
+    
+    def predictions(W_vect, images):
+        """Outputs normalized log-probabilities."""
+        W = parser.new_vect(W_vect)
+        cur_units = images
+        cur_params = []
+        it_trainable = 0
+        for i in range(num_layers):
+            if i in trainable_layers:
+                weights = W[('weights', it_trainable)]
+                biases = W[('biases', it_trainable)]
+                cur_params.append((weights, biases))
+                it_trainable += 1
+            else:
+                cur_params.append(())
+        conv_net(cur_params, images)
+        return cur_units
+    
+    def loss(W_vect, images, targets):
+        preds = predictions(W_vect, images)
+        return - np.sum(preds * targets) / images.shape[0]
+    
+    def frac_err(W_vect, images, targets):
+        preds = predictions(W_vect, images)
+        return np.mean(np.argmax(targets, axis=1) != np.argmax(preds, axis=1))
+        
+    return parser, predictions, loss, frac_err
