@@ -1,5 +1,6 @@
 """First real experiment - how well do we do on MNIST?"""
-
+import matplotlib.pyplot as plt
+from matplotlib import rc
 # import numpy as onp
 from numpy.linalg import norm
 import pickle
@@ -21,8 +22,9 @@ N_tests = 10**3
 num_channels = 5
 # ------ Variational parameters -------
 seed = 0
+init_scale = 0.1
 N_iter = 1000
-alpha = 0.0001
+alpha_un = 0.004
 init_scale = 0.1
 # ------ Plot parameters -------
 N_samples = 1
@@ -43,80 +45,105 @@ def run():
     (tests_images, tests_labels) = (tests_images[:N_tests], tests_labels[:N_tests])
     parser, pred_fun, nllfun, frac_err = make_toy_cnn_funs(num_classes, num_channels, IMAGE_SHAPE, batch_size, seed)
     # parser, pred_fun, nllfun, frac_err = make_nn_funs(layer_sizes)
+    alpha = alpha_un / N_train
     N_param = len(parser.vect)
     print("Running experiment...")
-    results = defaultdict(list)
+    params = parser.vect
+
+    def indexed_loss_fun(w, i_iter):
+        rs = RandomState((seed, i, i_iter))
+        idxs = rs.randint(N_train, size=batch_size)
+        nll = nllfun(w, train_images[idxs], train_labels[idxs]) * N_train
+        nlp = neg_log_prior(w)
+        return nll + nlp
+    gradfun = grad(indexed_loss_fun)
+
+    def callback(x, t, entropy):
+        results["entropy_per_dpt"     ].append(entropy / N_train)
+        results["minibatch_likelihood"].append(-indexed_loss_fun(x, t))
+        results["log_prior_per_dpt"   ].append(-neg_log_prior(x) / N_train)
+        if t % thin != 0 and t != N_iter and t != 0: return
+        results["iterations"      ].append(t)
+        results["train_likelihood"].append(-nllfun(x, train_images, train_labels))
+        results["tests_likelihood"].append(-nllfun(x, tests_images, tests_labels))
+        results["train_error"     ].append(frac_err(x, train_images, train_labels))
+        results["tests_error"     ].append(frac_err(x, tests_images, tests_labels))
+        results["marg_likelihood" ].append(estimate_marginal_likelihood(
+            results["train_likelihood"][-1], results["entropy_per_dpt"][-1]))
+        
+        print("Iteration {0:5} Train lik {1:2.4f}  Test lik {2:2.4f}" \
+              "  Marg lik {3:2.4f}  Test Err {4:2.4f}   Entropy {5:2.4f}".format(
+                  t, results["train_likelihood"][-1],
+                  results["tests_likelihood"][-1],
+                  results["marg_likelihood" ][-1],
+                  results["tests_error"     ][-1],
+                  results["entropy_per_dpt" ][-1]))
+    
+    all_results = []
     for i in range(N_samples):
-        params = parser.vect
-
-        def indexed_loss_fun(w, i_iter):
-            rs = RandomState((seed, i, i_iter))
-            idxs = rs.randint(N_train, size=batch_size)
-            nll = nllfun(w, train_images[idxs], train_labels[idxs]) * N_train
-            nlp = neg_log_prior(w)
-            return nll + nlp
-        gradfun = grad(indexed_loss_fun)
-
-        def callback(x, t, entropy):
-            results[("entropy", i)].append(entropy / N_train)
-            # results[("v_norm", i)].append(norm(v) / np.sqrt(N_param))
-            results[("minibatch_likelihood", i)].append(-indexed_loss_fun(x, t))
-            results[("log_prior_per_dpt", i)].append(-neg_log_prior(x) / N_train)
-            if t % thin != 0 and t != N_iter and t != 0: return
-            results[('iterations', i)].append(t)
-            results[("train_likelihood", i)].append(-nllfun(x, train_images, train_labels))
-            results[("tests_likelihood", i)].append(-nllfun(x, tests_images, tests_labels))
-            results[("tests_error", i)].append(frac_err(x, tests_images, tests_labels))
-            print("Iteration {0:5} Train likelihood {1:2.4f}  Test likelihood {2:2.4f}" \
-                  "  Test Err {3:2.4f}".format(t, results[("train_likelihood", i)][-1],
-                                                  results[("tests_likelihood", i)][-1],
-                                                  results[("tests_error",      i)][-1]))
+        results = defaultdict(list)
         rs = RandomState((seed, i))
-        sgd_entropic(gradfun, x_scale=params, N_iter=N_iter,
-                     learn_rate=alpha, rs=rs, callback=callback, approx=True)
-    return results
+        # sgd_entropic(gradfun, x_scale=params, N_iter=N_iter,
+        #                 learn_rate=alpha, rs=rs, callback=callback, approx=True)
+        sgd_entropic(gradfun, x_scale=np.full(N_param, init_scale), N_iter=N_iter,
+                        learn_rate=alpha, rs=rs, callback=callback, approx=True)
+        all_results.append(results)
+    
+    return all_results
 
 def estimate_marginal_likelihood(likelihood, entropy):
     return likelihood + entropy
 
+def plot():
+    print("Plotting results...")
+    with open('results.pkl', 'rb') as f:
+          results = pickle.load(f)
+
+    first_results = results[0]
+    # Diagnostic plots of everything for us.
+    for key in first_results:
+        plot_traces_and_mean(results, key)
+
+    # Nice plots for paper.
+    rc('font',**{'family':'serif'})
+    fig = plt.figure(0); fig.clf()
+    ax = fig.add_subplot(211)
+    plt.plot(first_results["iterations"], first_results["train_error"], 'b', label="Train error")
+    plt.plot(first_results["iterations"], first_results["tests_error"], 'g', label="Test error")
+    best_marg_like = first_results["iterations"][np.argmax(np.array(first_results["marg_likelihood"]))]
+    plt.axvline(x=best_marg_like, color='black', ls='dashed', zorder=2)
+    ax.legend(numpoints=1, loc=1, frameon=False, prop={'size':'12'})
+    ax.set_ylabel('Error')
+
+    ax = fig.add_subplot(212)
+    plt.plot(first_results["iterations"], first_results["marg_likelihood"], 'r', label="Marginal likelihood")
+    plt.axvline(x=best_marg_like, color='black', ls='dashed', zorder=2)
+    ax.legend(numpoints=1, loc=1, frameon=False, prop={'size':'12'})
+    ax.set_ylabel('Marginal likelihood')
+    ax.set_xlabel('Training iteration')
+    #low, high = ax.get_ylim()
+    #ax.set_ylim([0, high])
+
+    fig.set_size_inches((5,3.5))
+    ax.legend(numpoints=1, loc=1, frameon=False, prop={'size':'12'})
+    plt.savefig('marglik.pdf', pad_inches=0.05, bbox_inches='tight')
+    
 def plot_traces_and_mean(results, trace_type, X=None):
-    import matplotlib.pyplot as plt
     fig = plt.figure(0); fig.clf()
     ax = fig.add_subplot(211)
     if X is None:
-        X = np.arange(len(results[(trace_type, 0)]))
+        X = np.arange(len(results[0][trace_type]))
     for i in range(N_samples):
-        plt.plot(X, results[(trace_type, i)])
+        plt.plot(X, results[i][trace_type])
     ax.set_xlabel("Iteration")
     ax.set_ylabel(trace_type)
     ax = fig.add_subplot(212)
-    all_Y = [np.array(results[(trace_type, i)]) for i in range(N_samples)]
+    all_Y = [np.array(results[i][trace_type]) for i in range(N_samples)]
     plt.plot(X, sum(all_Y) / float(len(all_Y)))
     plt.savefig(trace_type + '.png')
 
-def plot():
-    print("Plotting results...")
-    with open('results.pkl') as f:
-          results = pickle.load(f)
-    import matplotlib.pyplot as plt
-
-    iters = results[('iterations', 0)]
-    for i in range(N_samples):
-        results[('marginal_likelihood', i)] = estimate_marginal_likelihood(
-            results[("train_likelihood", i)],
-            np.array(results[("entropy", i)])[iters])
-
-    plot_traces_and_mean(results, 'entropy')
-    # plot_traces_and_mean(results, 'v_norm')
-    plot_traces_and_mean(results, 'minibatch_likelihood')
-    plot_traces_and_mean(results, 'log_prior_per_dpt')
-    plot_traces_and_mean(results, 'tests_likelihood', X=iters)
-    plot_traces_and_mean(results, 'train_likelihood', X=iters)
-    plot_traces_and_mean(results, 'tests_error',      X=iters)
-    plot_traces_and_mean(results, 'marginal_likelihood', X=iters)
-
 if __name__ == '__main__':
     results = run()
-    f = open('results.pkl', 'wb')
-    pickle.dump(results, f)
+    with open('results.pkl', 'wb') as f:
+        pickle.dump(results, f)
     plot()
