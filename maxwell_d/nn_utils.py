@@ -149,18 +149,18 @@ def make_regression_nn_funs(layer_sizes):
         for i in range(N_layers):
             cur_W = W[('weights', i)]
             cur_B = W[('biases',  i)]
-            cur_units = np.dot(cur_units, cur_W) + cur_B
+            cur_units = jnp.dot(cur_units, cur_W) + cur_B
             if i < (N_layers - 1):
-                cur_units = np.tanh(cur_units)
+                cur_units = jnp.tanh(cur_units)
         return cur_units
 
     def loss(W_vect, X, T):
         """Outputs average normalized log-probabilities of Gaussians with variance of 1"""
-        # log_prior = - 0.5 * L2_reg * np.dot(W_vect, W_vect)
-        return np.mean((predictions(W_vect, X) - T)**2) + 0.5*np.log(2*np.pi)
+        # log_prior = - 0.5 * L2_reg * jnp.dot(W_vect, W_vect)
+        return jnp.mean((predictions(W_vect, X) - T)**2) + 0.5*jnp.log(2*jnp.pi)
 
     def rmse(W_vect, X, T):
-        return np.sqrt(np.mean((predictions(W_vect, X) - T)**2))
+        return jnp.sqrt(jnp.mean((predictions(W_vect, X) - T)**2))
 
     return parser, predictions, loss, rmse
 

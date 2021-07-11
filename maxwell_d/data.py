@@ -6,6 +6,7 @@ import numpy as np
 import numpy.random as npr
 import pickle
 from tensorflow import keras
+from sklearn.datasets import load_boston
 
 def datapath(fname):
     datadir = os.path.expanduser('data')
@@ -71,13 +72,14 @@ def load_data_dicts(*args):
 
 
 def load_boston_housing(train_frac=0.5, rs=npr.RandomState(0)):
-    data = np.loadtxt(datapath('boston_housing.txt'))
-    X = data[:,:-1]
-    y = data[:,-1][:, None]
+    # data = np.loadtxt(datapath('boston_housing.txt'))
+    # X = data[:,:-1]
+    # y = data[:,-1][:, None]
+    X, y = load_boston(return_X_y=True)
 
     # Create train and test sets with 90% and 10% of the data
     permutation = rs.choice(range(X.shape[0]), X.shape[0], replace=False)
-    size_train = np.round(X.shape[0] * train_frac)
+    size_train = int(np.round(X.shape[0] * train_frac))
     train_ixs = permutation[0:size_train]
     test_ixs = permutation[size_train:]
 

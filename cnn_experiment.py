@@ -9,9 +9,9 @@ import jax.numpy as np
 from jax import grad
 
 from maxwell_d.util import RandomState
-from maxwell_d.optimizers import entropic_descent_deterministic
+from maxwell_d.optimizers import entropic_descent_deterministic, entropic_descent2, sgd_entropic
 from maxwell_d.nn_utils import make_toy_cnn_funs, make_nn_funs
-from maxwell_d.data import load_mnist
+from maxwell_d.data import load_mnist, load_cifar10_2_classes
 
 # ------ Problem parameters -------
 layer_sizes = [784, 300, 10]
@@ -19,20 +19,14 @@ batch_size = 200
 N_train = 10**3
 N_tests = 10**3
 num_channels = 5
-
 # ------ Variational parameters -------
-seed = 1
-init_scale = 0.1
-epsilon = 1.0 / N_train
-gamma = 0.3
+seed = 0
 N_iter = 1000
-alpha = 0.05
-annealing_schedule = np.concatenate((np.zeros(int(N_iter/5)),
-                                     np.linspace(0, 1, 3 * int(N_iter/5)),
-                                     np.ones(int(N_iter/5))))
+alpha = 0.0001
+init_scale = 0.1
 # ------ Plot parameters -------
-N_samples = 3
-N_checkpoints = 30
+N_samples = 1
+N_checkpoints = 50
 thin = np.ceil(N_iter/N_checkpoints)
 
 def neg_log_prior(w):
@@ -41,7 +35,10 @@ def neg_log_prior(w):
 def run():
     (train_images, train_labels),\
     (tests_images, tests_labels),\
-    num_classes, IMAGE_SHAPE = load_mnist()
+    num_classes, IMAGE_SHAPE = load_cifar10_2_classes('plane','ship')
+    # N_train = train_images.shape[0]
+    # N_tests = tests_images.shape[0]
+    # num_classes, IMAGE_SHAPE = load_mnist()
     (train_images, train_labels) = (train_images[:N_train], train_labels[:N_train])
     (tests_images, tests_labels) = (tests_images[:N_tests], tests_labels[:N_tests])
     parser, pred_fun, nllfun, frac_err = make_toy_cnn_funs(num_classes, num_channels, IMAGE_SHAPE, batch_size, seed)
@@ -50,7 +47,6 @@ def run():
     print("Running experiment...")
     results = defaultdict(list)
     for i in range(N_samples):
-        # x_init_scale = np.full(N_param, init_scale)
         params = parser.vect
 
         def indexed_loss_fun(w, i_iter):
@@ -61,9 +57,9 @@ def run():
             return nll + nlp
         gradfun = grad(indexed_loss_fun)
 
-        def callback(x, t, v, entropy):
+        def callback(x, t, entropy):
             results[("entropy", i)].append(entropy / N_train)
-            results[("v_norm", i)].append(norm(v) / np.sqrt(N_param))
+            # results[("v_norm", i)].append(norm(v) / np.sqrt(N_param))
             results[("minibatch_likelihood", i)].append(-indexed_loss_fun(x, t))
             results[("log_prior_per_dpt", i)].append(-neg_log_prior(x) / N_train)
             if t % thin != 0 and t != N_iter and t != 0: return
@@ -76,9 +72,8 @@ def run():
                                                   results[("tests_likelihood", i)][-1],
                                                   results[("tests_error",      i)][-1]))
         rs = RandomState((seed, i))
-        entropic_descent_deterministic(gradfun, callback=callback, x_scale=params,
-                          epsilon=epsilon, gamma=gamma, alpha=alpha,
-                          annealing_schedule=annealing_schedule, rs=rs)
+        sgd_entropic(gradfun, x_scale=params, N_iter=N_iter,
+                     learn_rate=alpha, rs=rs, callback=callback, approx=True)
     return results
 
 def estimate_marginal_likelihood(likelihood, entropy):
@@ -112,7 +107,7 @@ def plot():
             np.array(results[("entropy", i)])[iters])
 
     plot_traces_and_mean(results, 'entropy')
-    plot_traces_and_mean(results, 'v_norm')
+    # plot_traces_and_mean(results, 'v_norm')
     plot_traces_and_mean(results, 'minibatch_likelihood')
     plot_traces_and_mean(results, 'log_prior_per_dpt')
     plot_traces_and_mean(results, 'tests_likelihood', X=iters)
@@ -122,6 +117,6 @@ def plot():
 
 if __name__ == '__main__':
     results = run()
-    with open('results.pkl', 'w') as f:
-        pickle.dump(results, f, 1)
+    f = open('results.pkl', 'wb')
+    pickle.dump(results, f)
     plot()

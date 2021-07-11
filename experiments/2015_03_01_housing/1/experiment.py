@@ -2,15 +2,18 @@
 import matplotlib.pyplot as plt
 from matplotlib import rc
 
-import numpy as np
+import numpy as onp
+import jax.numpy as np
 import pickle
 from collections import defaultdict
-from funkyyak import grad
+from jax import grad
 
-from maxwell_d.util import RandomState
-from maxwell_d.optimizers import sgd_entropic
-from maxwell_d.nn_utils import make_regression_nn_funs
-from maxwell_d.data import load_boston_housing
+import sys
+sys.path.insert(1, 'maxwell_d')
+from util import RandomState
+from optimizers import sgd_entropic, sgd_entropic_david
+from nn_utils import make_regression_nn_funs
+from data import load_boston_housing
 
 # ------ Problem parameters -------
 layer_sizes = [13, 100, 1]
@@ -39,7 +42,6 @@ def run():
     alpha = alpha_un / N_train
     parser, pred_fun, nllfun, rmse = make_regression_nn_funs(layer_sizes)
     N_param = len(parser.vect)
-
     def indexed_loss_fun(w, i_iter):
         rs = RandomState((seed, i, i_iter))
         idxs = rs.randint(N_train, size=batch_size)
@@ -62,15 +64,15 @@ def run():
         results["marg_likelihood" ].append(estimate_marginal_likelihood(
             results["train_likelihood"][-1], results["entropy_per_dpt"][-1]))
                                            
-        print "Iteration {0:5} Train lik {1:2.4f}  Test lik {2:2.4f}" \
+        print("Iteration {0:5} Train lik {1:2.4f}  Test lik {2:2.4f}" \
               "  Marg lik {3:2.4f}  Test RMSE {4:2.4f}".format(
                   t, results["train_likelihood"][-1],
                   results["tests_likelihood"][-1],
                   results["marg_likelihood" ][-1],
-                  results["tests_rmse"      ][-1])
+                  results["tests_rmse"      ][-1]))
 
     all_results = []
-    for i in xrange(N_samples):
+    for i in range(N_samples):
         results = defaultdict(list)
         rs = RandomState((seed, i))
         sgd_entropic(gradfun, np.full(N_param, init_scale), N_iter, alpha, rs, callback)
@@ -82,8 +84,8 @@ def estimate_marginal_likelihood(likelihood, entropy):
     return likelihood + entropy
 
 def plot():
-    print "Plotting results..."
-    with open('results.pkl') as f:
+    print("Plotting results...")
+    with open('results.pkl', 'rb') as f:
           results = pickle.load(f)
 
     first_results = results[0]
@@ -97,7 +99,7 @@ def plot():
     ax = fig.add_subplot(211)
     plt.plot(first_results["iterations"], first_results["train_rmse"], 'b', label="Train error")
     plt.plot(first_results["iterations"], first_results["tests_rmse"], 'g', label="Test error")
-    best_marg_like = first_results["iterations"][np.argmax(first_results["marg_likelihood"])]
+    best_marg_like = first_results["iterations"][np.argmax(np.array(first_results["marg_likelihood"]))]
     plt.axvline(x=best_marg_like, color='black', ls='dashed', zorder=2)
     ax.legend(numpoints=1, loc=1, frameon=False, prop={'size':'12'})
     ax.set_ylabel('RMSE')
@@ -120,7 +122,7 @@ def plot_traces_and_mean(results, trace_type, X=None):
     ax = fig.add_subplot(211)
     if X is None:
         X = np.arange(len(results[0][trace_type]))
-    for i in xrange(N_samples):
+    for i in range(N_samples):
         plt.plot(X, results[i][trace_type])
     ax.set_xlabel("Iteration")
     ax.set_ylabel(trace_type)
@@ -131,7 +133,8 @@ def plot_traces_and_mean(results, trace_type, X=None):
 
 
 if __name__ == '__main__':
-    #results = run()
-    #with open('results.pkl', 'w') as f:
-    #    pickle.dump(results, f, 1)
+    results = run()
+    with open('results.pkl', 'wb') as f:
+        breakpoint()
+        pickle.dump(results, f, 1)
     plot()

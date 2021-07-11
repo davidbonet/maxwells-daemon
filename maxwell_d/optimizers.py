@@ -173,9 +173,10 @@ def aed3_anneal(grad, x_scale, callback=None, learn_rate=0.1, init_log_decay=np.
 
 def sgd_entropic(gradfun, x_scale, N_iter, learn_rate, rs, callback, approx=True):
     D = len(x_scale)
-    x = rs.randn(D) * x_scale
+    x = x_scale # Initialize parameters as desired in CNN architecutre
+    # x = rs.randn(D) * x_scale
     entropy = 0.5 * D * (1 + np.log(2*np.pi)) + np.sum(np.log(x_scale))
-    for t in xrange(N_iter):
+    for t in range(N_iter):
         g = gradfun(x, t)
         hvp = grad(lambda x, vect : np.dot(gradfun(x, t), vect)) # Hessian vector product
         jvp = lambda vect : vect - learn_rate * hvp(x, vect) # Jacobian vector product
