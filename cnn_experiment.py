@@ -15,16 +15,16 @@ from maxwell_d.nn_utils import make_toy_cnn_funs, make_nn_funs
 from maxwell_d.data import load_mnist, load_cifar10_2_classes
 
 # ------ Problem parameters -------
-layer_sizes = [784, 300, 10]
-batch_size = 200
+# layer_sizes = [784, 300, 10]
+batch_size = 50
 N_train = 10**3
 N_tests = 10**3
 num_channels = 5
 # ------ Variational parameters -------
-seed = 0
+seed = 3
 init_scale = 0.1
 N_iter = 1000
-alpha_un = 0.004
+alpha = 0.0001
 init_scale = 0.1
 # ------ Plot parameters -------
 N_samples = 1
@@ -45,7 +45,7 @@ def run():
     (tests_images, tests_labels) = (tests_images[:N_tests], tests_labels[:N_tests])
     parser, pred_fun, nllfun, frac_err = make_toy_cnn_funs(num_classes, num_channels, IMAGE_SHAPE, batch_size, seed)
     # parser, pred_fun, nllfun, frac_err = make_nn_funs(layer_sizes)
-    alpha = alpha_un / N_train
+    # alpha = alpha / N_train
     N_param = len(parser.vect)
     print("Running experiment...")
     params = parser.vect
