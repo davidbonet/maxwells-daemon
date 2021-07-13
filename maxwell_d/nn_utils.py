@@ -8,6 +8,9 @@ from jax import random
 from jax.experimental import stax
 from jax.experimental.stax import (Conv, Dense, Flatten, Relu, LogSoftmax, Softmax, MaxPool)
 from jax.nn.initializers import he_uniform
+from maxwell_d.ann_utils import FaissNeighborSearch as ANN
+from maxwell_d.graph_utils import create_distance_matrix, majority_vote_classifier
+from maxwell_d.non_neg_qpsolver import non_negative_qpsolver
 
 class WeightsParser(object):
     def __init__(self):
@@ -222,6 +225,21 @@ def make_toy_cnn_funs(num_classes, num_channels, image_shape, batch_size, seed=0
         # parser.add_shape(('biases', i), biases.shape)
         parser.add_shape_and_values(('weights', i), weights)
         parser.add_shape_and_values(('biases', i), biases)
+    
+    init_fun, conv_net_penult = stax.serial(# Layer 0
+                                Conv(num_channels, (5, 5), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                Relu,
+                                # Layer 1
+                                Conv(num_channels, (5, 5), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                Relu,
+                                MaxPool((2, 2), strides=(2, 2), padding="SAME"),
+                                # Layer 2
+                                Conv(num_channels, (5, 5), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                Relu,
+                                # Layer 3
+                                Conv(num_channels, (3, 3), strides=None, padding="VALID", W_init=he_uniform(), b_init=he_uniform()),
+                                Relu,
+                                MaxPool((2, 2), strides=(2, 2), padding="SAME"))
 
     def predictions(W_vect, images):
         """Outputs normalized log-probabilities."""
@@ -237,6 +255,88 @@ def make_toy_cnn_funs(num_classes, num_channels, image_shape, batch_size, seed=0
             else:
                 cur_params.append(())
         return conv_net(cur_params, images)
+        
+    def predictions_penult(W_vect, images):
+        """Outputs normalized log-probabilities."""
+        W = parser.new_vect(W_vect)
+        cur_params = []
+        it_trainable = 0
+        for i in range(num_layers):
+            if i in trainable_layers:
+                weights = W[('weights', it_trainable)]
+                biases = W[('biases', it_trainable)]
+                cur_params.append((weights, biases))
+                it_trainable += 1
+            else:
+                cur_params.append(())
+            cur_params_penult = cur_params[:10]
+        activations = conv_net_penult(cur_params_penult, images)
+        activations = np.reshape(activations, [activations.shape[0], -1])
+        return activations
+    
+    def nnk_loo_jax(W_vect, train_images, train_labels, knn_param=15, kernel='cosine', ignore_identical=True, edge_threshold=1e-10):
+        train_activations = predictions_penult(W_vect, train_images)
+        train_activations = np.array(train_activations)
+        train_labels = np.array(train_labels)
+        assert len(train_activations) == len(train_labels)
+        
+        num_classes = train_labels.shape[1]
+        queries = train_activations
+        query_labels = train_labels
+        y_train = np.zeros((len(queries), knn_param, num_classes),dtype=np.float)
+        W = np.zeros((len(queries), knn_param), dtype=np.float)
+        
+        print("Starting k-NN search...", flush=True)
+        # Initialize ANN
+        d = train_activations.shape[1]
+        neighbor_search = ANN(d, knn_param+1, use_gpu=False)
+        neighbor_search.add_to_database(x=train_activations)
+        D, I = neighbor_search.search_neighbors(q=queries)
+        I = I[:, 1:] # Remove self
+        D = D[:, 1:] # Remove self
+        print("k-NN search finished.", flush=True)
+            
+        print("\nStarting NNK label interpolation...", flush=True)
+        for ii in range(len(queries)):
+            if ii % 1000 == 0:
+                print(f'\tQuery {ii}/{len(queries)}...', flush=True)
+            not_identical = np.nonzero(D[ii])[0]
+            if ignore_identical and len(not_identical) > 0: # eliminate train points at distance 0.0 to query (identical activations)
+                # D_dif = D[ii, not_identical]
+                I_dif = I[ii, not_identical]
+            else:
+                # D_dif = D[ii, :]
+                I_dif = I[ii, :]
+            X_knn = train_activations[I_dif]
+            
+            y_knn = train_labels[I_dif]
+            query_and_knn = np.concatenate((queries[ii:ii+1, :], X_knn), axis=0)
+            
+            if kernel == 'cosine':
+                query_and_knn_normalized = query_and_knn / np.linalg.norm(query_and_knn, axis=1)[:, None]
+                G = 0.5 + np.dot(query_and_knn_normalized, query_and_knn_normalized.T) / 2.0
+            elif kernel == 'gaussian':
+                D_m = create_distance_matrix(X=query_and_knn, p=2)
+                sigma = D_m[0,-1] / 3 # K neighbors of query are within 3 standard deviations (change if more than 1 query)
+                G = np.exp(-(D_m ** 2) / (2 * sigma ** 2))
+            else:
+                raise Exception("Unknown kernel: " + kernel)
+            
+            G_i = G[1:len(query_and_knn), 1:len(query_and_knn)]
+            g_i = G[1:len(query_and_knn), 0]
+            
+            x_opt, check = non_negative_qpsolver(G_i, g_i, g_i, edge_threshold)
+            if ignore_identical and len(not_identical) > 0:
+                W[ii, not_identical] = x_opt
+                y_train[ii, not_identical, :] = y_knn
+            else:
+                W[ii, :] = x_opt
+                y_train[ii, :, :] = y_knn
+
+        print("NNK label interpolation finished.", flush=True)
+        nnk_loo_error = np.mean(majority_vote_classifier(W, y_train, query_labels))
+        print(f"LOO NNK interpolation error: {nnk_loo_error:.4f}")
+        return nnk_loo_error
     
     def loss(W_vect, X, T):
         return - np.sum(predictions(W_vect, X) * T) / X.shape[0]
@@ -245,4 +345,4 @@ def make_toy_cnn_funs(num_classes, num_channels, image_shape, batch_size, seed=0
         preds = np.argmax(predictions(W_vect, X), axis=1)
         return np.mean(np.argmax(T, axis=1) != preds)
 
-    return parser, predictions, loss, frac_err
+    return parser, predictions, loss, frac_err, nnk_loo_jax

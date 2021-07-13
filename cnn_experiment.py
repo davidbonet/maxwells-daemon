@@ -14,6 +14,7 @@ from maxwell_d.optimizers import entropic_descent_deterministic, entropic_descen
 from maxwell_d.nn_utils import make_toy_cnn_funs, make_nn_funs
 from maxwell_d.data import load_mnist, load_cifar10_2_classes
 
+
 # ------ Problem parameters -------
 # layer_sizes = [784, 300, 10]
 batch_size = 50
@@ -23,7 +24,7 @@ num_channels = 5
 # ------ Variational parameters -------
 seed = 3
 init_scale = 0.1
-N_iter = 10000
+N_iter = 200
 alpha = 0.00001
 init_scale = 0.1
 # ------ Plot parameters -------
@@ -43,7 +44,7 @@ def run():
     # num_classes, IMAGE_SHAPE = load_mnist()
     (train_images, train_labels) = (train_images[:N_train], train_labels[:N_train])
     (tests_images, tests_labels) = (tests_images[:N_tests], tests_labels[:N_tests])
-    parser, pred_fun, nllfun, frac_err = make_toy_cnn_funs(num_classes, num_channels, IMAGE_SHAPE, batch_size, seed)
+    parser, pred_fun, nllfun, frac_err, nnk_loo_jax = make_toy_cnn_funs(num_classes, num_channels, IMAGE_SHAPE, batch_size, seed)
     # parser, pred_fun, nllfun, frac_err = make_nn_funs(layer_sizes)
     # alpha = alpha / N_train
     N_param = len(parser.vect)
@@ -70,6 +71,7 @@ def run():
         results["tests_error"     ].append(frac_err(x, tests_images, tests_labels))
         results["marg_likelihood" ].append(estimate_marginal_likelihood(
             results["train_likelihood"][-1], results["entropy_per_dpt"][-1]))
+        results["nnk_loo_layer"   ].append(nnk_loo_jax(x, train_images, train_labels))
         
         print("Iteration {0:5} Train lik {1:2.4f}  Test lik {2:2.4f}" \
               "  Marg lik {3:2.4f}  Test Err {4:2.4f}   Entropy {5:2.4f}".format(
