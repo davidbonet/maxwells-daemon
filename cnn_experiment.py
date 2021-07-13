@@ -17,14 +17,14 @@ from maxwell_d.data import load_mnist, load_cifar10_2_classes
 # ------ Problem parameters -------
 # layer_sizes = [784, 300, 10]
 batch_size = 50
-N_train = 10**3
-N_tests = 10**3
+N_train = 10000
+N_tests = 2000
 num_channels = 5
 # ------ Variational parameters -------
 seed = 3
 init_scale = 0.1
-N_iter = 1000
-alpha = 0.0001
+N_iter = 10000
+alpha = 0.00001
 init_scale = 0.1
 # ------ Plot parameters -------
 N_samples = 1
@@ -47,7 +47,7 @@ def run():
     # parser, pred_fun, nllfun, frac_err = make_nn_funs(layer_sizes)
     # alpha = alpha / N_train
     N_param = len(parser.vect)
-    print("Running experiment...")
+    print("Running experiment...", flush=True)
     params = parser.vect
 
     def indexed_loss_fun(w, i_iter):
@@ -77,7 +77,7 @@ def run():
                   results["tests_likelihood"][-1],
                   results["marg_likelihood" ][-1],
                   results["tests_error"     ][-1],
-                  results["entropy_per_dpt" ][-1]))
+                  results["entropy_per_dpt" ][-1]), flush=True)
     
     all_results = []
     for i in range(N_samples):
@@ -95,7 +95,7 @@ def estimate_marginal_likelihood(likelihood, entropy):
     return likelihood + entropy
 
 def plot():
-    print("Plotting results...")
+    print("Plotting results...", flush=True)
     with open('results.pkl', 'rb') as f:
           results = pickle.load(f)
 
